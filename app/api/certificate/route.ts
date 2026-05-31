@@ -26,24 +26,33 @@ export async function POST(request: NextRequest) {
 
     const message = await client.messages.create({
       model: 'claude-haiku-4-5-20251001',
-      max_tokens: 512,
+      max_tokens: 1024,
       messages: [
         {
           role: 'user',
-          content: `Write a short, fun, and personalized certification statement for ${name} who just completed a quiz on "${topic}".
+          content: `You are grading a quiz on "${topic}". Evaluate each answer and return a JSON object.
 
-Here were their Q&A responses:
 ${qaText}
 
-Requirements:
-- Write exactly 2-3 sentences
-- Always grant the certificate (this is a fun app, not a serious test)
-- Be warm, celebratory, and personalized — reference something specific from their answers
-- Sound like an official but playful certification
-- Do NOT include the person's name (it will be added separately)
-- Do NOT include phrases like "This certifies that" (that will be added separately)
+For each question, decide if the answer is correct, partially correct, or incorrect. Be generous — give credit for answers that show genuine understanding even if imprecise. Award 1 point for correct/mostly correct, 0 for clearly wrong or blank.
 
-Return ONLY the 2-3 sentence statement, nothing else.`,
+Then, if the total score is 3 or more out of ${answers.length}, write a short 2-3 sentence certification statement for ${name}.
+
+Return ONLY valid JSON in exactly this format, no markdown, no explanation:
+{
+  "scores": [
+    { "question": "...", "answer": "...", "correct": true, "feedback": "one short sentence" },
+    ...
+  ],
+  "totalScore": 4,
+  "passed": true,
+  "statement": "2-3 sentence statement if passed, empty string if failed"
+}
+
+Requirements for the statement (only if passed):
+- Be warm, celebratory, and personalized — reference something from their answers
+- Do NOT include the person's name (added separately)
+- Do NOT start with "This certifies that"`,
         },
       ],
     })
@@ -53,7 +62,22 @@ Return ONLY the 2-3 sentence statement, nothing else.`,
       throw new Error('Unexpected response type')
     }
 
-    return NextResponse.json({ statement: content.text.trim() })
+    const text = content.text.trim()
+    let result
+    try {
+      result = JSON.parse(text)
+    } catch {
+      const match = text.match(/\{[\s\S]*\}/)
+      if (match) result = JSON.parse(match[0])
+      else throw new Error('Could not parse response as JSON')
+    }
+
+    return NextResponse.json({
+      scores: result.scores,
+      totalScore: result.totalScore,
+      passed: result.passed,
+      statement: result.statement ?? '',
+    })
   } catch (error) {
     console.error('Error generating certificate:', error)
     return NextResponse.json(

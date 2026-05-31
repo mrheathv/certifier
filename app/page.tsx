@@ -2,11 +2,18 @@
 
 import { useState, useRef } from 'react'
 
-type Stage = 'landing' | 'loading-questions' | 'quiz' | 'loading-certificate' | 'certificate'
+type Stage = 'landing' | 'loading-questions' | 'quiz' | 'loading-certificate' | 'results' | 'certificate'
 
 interface QAPair {
   question: string
   answer: string
+}
+
+interface ScoreItem {
+  question: string
+  answer: string
+  correct: boolean
+  feedback: string
 }
 
 export default function Home() {
@@ -18,6 +25,9 @@ export default function Home() {
   const [currentAnswer, setCurrentAnswer] = useState('')
   const [answers, setAnswers] = useState<QAPair[]>([])
   const [statement, setStatement] = useState('')
+  const [scores, setScores] = useState<ScoreItem[]>([])
+  const [totalScore, setTotalScore] = useState(0)
+  const [passed, setPassed] = useState(false)
   const [error, setError] = useState('')
   const [isDownloading, setIsDownloading] = useState(false)
   const certificateRef = useRef<HTMLDivElement>(null)
@@ -63,8 +73,11 @@ export default function Home() {
         })
         const data = await res.json()
         if (!res.ok) throw new Error(data.error)
+        setScores(data.scores)
+        setTotalScore(data.totalScore)
+        setPassed(data.passed)
         setStatement(data.statement)
-        setStage('certificate')
+        setStage('results')
       } catch (e) {
         setError('Failed to generate certificate. Please try again.')
         setStage('quiz')
@@ -98,7 +111,36 @@ export default function Home() {
     setQuestions([])
     setAnswers([])
     setStatement('')
+    setScores([])
+    setTotalScore(0)
+    setPassed(false)
     setError('')
+  }
+
+  const retryQuiz = async () => {
+    setAnswers([])
+    setScores([])
+    setTotalScore(0)
+    setPassed(false)
+    setStatement('')
+    setError('')
+    setStage('loading-questions')
+    try {
+      const res = await fetch('/api/questions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ topic }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      setQuestions(data.questions)
+      setCurrentQ(0)
+      setCurrentAnswer('')
+      setStage('quiz')
+    } catch {
+      setError('Failed to generate questions. Please try again.')
+      setStage('results')
+    }
   }
 
   const today = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
@@ -211,8 +253,71 @@ export default function Home() {
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
             <path className="opacity-80" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
           </svg>
-          <p className="text-xl font-semibold">Preparing your certificate…</p>
-          <p className="text-slate-400 mt-2 text-sm">Almost there — sealing the wax…</p>
+          <p className="text-xl font-semibold">Grading your answers…</p>
+          <p className="text-slate-400 mt-2 text-sm">Consulting the experts…</p>
+        </div>
+      )}
+
+      {/* RESULTS */}
+      {stage === 'results' && (
+        <div className="w-full max-w-2xl fade-in">
+          <div className="text-center mb-8">
+            <div className="text-6xl mb-3">{passed ? '🎉' : '😔'}</div>
+            <h2 className="text-white text-3xl font-bold">
+              {passed ? `You passed, ${name.split(' ')[0]}!` : `Not quite, ${name.split(' ')[0]}`}
+            </h2>
+            <div className="mt-3 flex items-center justify-center gap-3">
+              <span className="text-2xl font-bold" style={{ color: passed ? '#fbbf24' : '#f87171' }}>
+                {totalScore} / {scores.length}
+              </span>
+              <span className="text-slate-300 text-lg">
+                {passed ? '— Certificate unlocked!' : `— Need ${Math.ceil(scores.length * 0.6)} to pass`}
+              </span>
+            </div>
+          </div>
+
+          <div className="space-y-3 mb-8">
+            {scores.map((s, i) => (
+              <div key={i} className="bg-white/10 backdrop-blur-sm rounded-xl p-4 border border-white/20">
+                <div className="flex items-start gap-3">
+                  <span className="text-xl mt-0.5 flex-shrink-0">{s.correct ? '✅' : '❌'}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-slate-200 font-medium text-sm mb-1">{s.question}</p>
+                    <p className="text-white text-sm mb-1">
+                      <span className="text-slate-400">Your answer: </span>{s.answer || <em className="text-slate-500">No answer</em>}
+                    </p>
+                    <p className="text-slate-400 text-xs italic">{s.feedback}</p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="flex gap-4 justify-center">
+            {passed ? (
+              <button
+                onClick={() => setStage('certificate')}
+                className="py-3 px-8 rounded-xl font-semibold text-lg bg-amber-400 hover:bg-amber-300 transition-all duration-200"
+                style={{ color: '#0f2340' }}
+              >
+                View Certificate →
+              </button>
+            ) : (
+              <button
+                onClick={retryQuiz}
+                className="py-3 px-8 rounded-xl font-semibold text-lg bg-amber-400 hover:bg-amber-300 transition-all duration-200"
+                style={{ color: '#0f2340' }}
+              >
+                Try Again →
+              </button>
+            )}
+            <button
+              onClick={restart}
+              className="py-3 px-8 rounded-xl font-semibold text-lg bg-white/10 hover:bg-white/20 text-white border border-white/20 transition-all duration-200"
+            >
+              ↩ Start Over
+            </button>
+          </div>
         </div>
       )}
 

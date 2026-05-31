@@ -19,6 +19,7 @@ export default function Home() {
   const [answers, setAnswers] = useState<QAPair[]>([])
   const [statement, setStatement] = useState('')
   const [error, setError] = useState('')
+  const [isDownloading, setIsDownloading] = useState(false)
   const certificateRef = useRef<HTMLDivElement>(null)
 
   const startQuiz = async () => {
@@ -66,20 +67,28 @@ export default function Home() {
         setStage('certificate')
       } catch (e) {
         setError('Failed to generate certificate. Please try again.')
-        setStage('landing')
+        setStage('quiz')
+        // Restore last question so the user can retry
+        setCurrentQ(newAnswers.length - 1)
+        setAnswers(newAnswers.slice(0, -1))
       }
     }
   }
 
   const downloadPDF = async () => {
-    if (!certificateRef.current) return
-    const { default: html2canvas } = await import('html2canvas')
-    const { default: jsPDF } = await import('jspdf')
-    const canvas = await html2canvas(certificateRef.current, { scale: 2, useCORS: true })
-    const imgData = canvas.toDataURL('image/png')
-    const pdf = new jsPDF({ orientation: 'landscape', unit: 'px', format: [canvas.width / 2, canvas.height / 2] })
-    pdf.addImage(imgData, 'PNG', 0, 0, canvas.width / 2, canvas.height / 2)
-    pdf.save(`${name.replace(/\s+/g, '_')}_${topic.replace(/\s+/g, '_')}_Certificate.pdf`)
+    if (!certificateRef.current || isDownloading) return
+    setIsDownloading(true)
+    try {
+      const { default: html2canvas } = await import('html2canvas')
+      const { default: jsPDF } = await import('jspdf')
+      const canvas = await html2canvas(certificateRef.current, { scale: 2, useCORS: true, backgroundColor: '#fefdf4' })
+      const imgData = canvas.toDataURL('image/png')
+      const pdf = new jsPDF({ orientation: 'landscape', unit: 'px', format: [canvas.width / 2, canvas.height / 2] })
+      pdf.addImage(imgData, 'PNG', 0, 0, canvas.width / 2, canvas.height / 2)
+      pdf.save(`${name.replace(/\s+/g, '_')}_${topic.replace(/\s+/g, '_')}_Certificate.pdf`)
+    } finally {
+      setIsDownloading(false)
+    }
   }
 
   const restart = () => {
@@ -145,10 +154,13 @@ export default function Home() {
 
       {/* LOADING QUESTIONS */}
       {stage === 'loading-questions' && (
-        <div className="text-center text-white">
-          <div className="text-5xl mb-6 animate-spin">⚙️</div>
-          <p className="text-xl font-medium">Generating your {topic} quiz...</p>
-          <p className="text-slate-400 mt-2">Hang tight!</p>
+        <div className="text-center text-white fade-in">
+          <svg className="animate-spin h-14 w-14 mx-auto mb-6 text-amber-400" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
+            <path className="opacity-80" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+          </svg>
+          <p className="text-xl font-semibold">Crafting your <span className="text-amber-400">{topic}</span> quiz…</p>
+          <p className="text-slate-400 mt-2 text-sm">Consulting the knowledge oracles…</p>
         </div>
       )}
 
@@ -163,7 +175,7 @@ export default function Home() {
             <div className="w-full bg-white/10 rounded-full h-2">
               <div
                 className="bg-amber-400 h-2 rounded-full transition-all duration-500"
-                style={{ width: `${((currentQ + 1) / questions.length) * 100}%` }}
+                style={{ width: `${(currentQ / questions.length) * 100}%` }}
               />
             </div>
           </div>
@@ -194,16 +206,24 @@ export default function Home() {
 
       {/* LOADING CERTIFICATE */}
       {stage === 'loading-certificate' && (
-        <div className="text-center text-white">
-          <div className="text-5xl mb-6">✨</div>
-          <p className="text-xl font-medium">Generating your certificate...</p>
-          <p className="text-slate-400 mt-2">Almost there!</p>
+        <div className="text-center text-white fade-in">
+          <svg className="animate-spin h-14 w-14 mx-auto mb-6 text-amber-400" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
+            <path className="opacity-80" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+          </svg>
+          <p className="text-xl font-semibold">Preparing your certificate…</p>
+          <p className="text-slate-400 mt-2 text-sm">Almost there — sealing the wax…</p>
         </div>
       )}
 
       {/* CERTIFICATE */}
       {stage === 'certificate' && (
-        <div className="w-full max-w-3xl">
+        <div className="w-full max-w-3xl fade-in">
+          <div className="text-center mb-6">
+            <p className="text-5xl mb-2">🎉</p>
+            <h2 className="text-white text-3xl font-bold">Congratulations, {name.split(' ')[0]}!</h2>
+            <p className="text-amber-300 mt-1">Your certificate is ready.</p>
+          </div>
           <div ref={certificateRef} className="certificate-wrapper" style={{
             background: 'linear-gradient(145deg, #fefdf4 0%, #fffef8 100%)',
             border: '12px solid #1e3a5f',
@@ -264,10 +284,21 @@ export default function Home() {
           <div className="flex gap-4 mt-6 justify-center">
             <button
               onClick={downloadPDF}
-              className="py-3 px-8 rounded-xl font-semibold text-lg bg-amber-400 hover:bg-amber-300 transition-all duration-200"
+              disabled={isDownloading}
+              className="py-3 px-8 rounded-xl font-semibold text-lg bg-amber-400 hover:bg-amber-300 disabled:opacity-60 disabled:cursor-not-allowed transition-all duration-200 flex items-center gap-2"
               style={{ color: '#0f2340' }}
             >
-              📄 Download as PDF
+              {isDownloading ? (
+                <>
+                  <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                  </svg>
+                  Generating PDF…
+                </>
+              ) : (
+                <>📄 Download as PDF</>
+              )}
             </button>
             <button
               onClick={restart}
